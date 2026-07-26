@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getResult, getStatus, uploadDocument } from '../api'
+import { AlertIcon, CheckCircleIcon, CloseIcon, ImageIcon, InfoIcon, UploadIcon } from './Icons'
 
 // First-ever upload after the backend starts has to download/load the BERT
 // model (can take a minute or two); every upload after that is fast. Poll
@@ -7,11 +8,31 @@ import { getResult, getStatus, uploadDocument } from '../api'
 const POLL_INTERVAL_MS = 2000
 const POLL_ATTEMPTS = 90 // ~3 minutes
 
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 export default function Upload({ onResult }) {
   const [file, setFile] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [message, setMessage] = useState('')
+  const [message, setMessage] = useState(null) // { tone, text }
   const [pendingId, setPendingId] = useState(null)
+  const [dragging, setDragging] = useState(false)
+  const [thumbUrl, setThumbUrl] = useState(null)
+  const inputRef = useRef(null)
+
+  // Local thumbnail for the chosen file; revoked whenever it's replaced.
+  useEffect(() => {
+    if (!file) {
+      setThumbUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    setThumbUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [file])
 
   async function pollUntilReady(id) {
     setPendingId(id)
@@ -20,34 +41,41 @@ export default function Upload({ onResult }) {
       if (status === 'needs_review' || status === 'approved') {
         const result = await getResult(id)
         onResult(result)
-        setMessage('')
+        setMessage({ tone: 'success', text: 'Processing complete — review the fields below.' })
         setPendingId(null)
         return
       }
       if (status === 'failed') {
-        setMessage('Processing failed on the server. Check `docker compose logs backend`.')
+        setMessage({
+          tone: 'error',
+          text: 'Processing failed on the server. Check `docker compose logs backend`.',
+        })
         setPendingId(null)
         return
       }
       await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
     }
-    setMessage(
-      'Still processing on the server (this can happen on the very first ' +
-        'upload while the model loads). Click "Check again" below once more ' +
-        'time has passed — no need to re-upload.'
-    )
+    setMessage({
+      tone: 'warning',
+      text:
+        'Still processing on the server (this can happen on the very first upload while the ' +
+        'model loads). Select “Check again” below once more time has passed — no need to re-upload.',
+    })
   }
 
   async function handleUpload(e) {
     e.preventDefault()
-    if (!file) return
+    if (!file || busy) return
     setBusy(true)
-    setMessage('Uploading and processing...')
+    setMessage({ tone: 'info', text: 'Uploading and running the OCR pipeline…' })
     try {
       const doc = await uploadDocument(file)
       await pollUntilReady(doc.id)
     } catch (err) {
-      setMessage('Upload failed: ' + (err?.response?.data?.detail || err.message))
+      setMessage({
+        tone: 'error',
+        text: 'Upload failed: ' + (err?.response?.data?.detail || err.message),
+      })
     } finally {
       setBusy(false)
     }
@@ -56,7 +84,7 @@ export default function Upload({ onResult }) {
   async function handleCheckAgain() {
     if (!pendingId) return
     setBusy(true)
-    setMessage('Checking...')
+    setMessage({ tone: 'info', text: 'Checking processing status…' })
     try {
       await pollUntilReady(pendingId)
     } finally {
@@ -64,24 +92,131 @@ export default function Upload({ onResult }) {
     }
   }
 
+  function selectFile(candidate) {
+    if (!candidate) return
+    if (!candidate.type.startsWith('image/')) {
+      setMessage({ tone: 'error', text: 'That file is not an image. Choose a PNG, JPG or TIFF scan.' })
+      return
+    }
+    setFile(candidate)
+    setMessage(null)
+  }
+
+  function handleDrop(e) {
+    e.preventDefault()
+    setDragging(false)
+    selectFile(e.dataTransfer.files?.[0])
+  }
+
+  function clearFile() {
+    setFile(null)
+    setMessage(null)
+    if (inputRef.current) inputRef.current.value = ''
+    inputRef.current?.focus()
+  }
+
+  const AlertToneIcon =
+    message?.tone === 'error' || message?.tone === 'warning'
+      ? AlertIcon
+      : message?.tone === 'success'
+        ? CheckCircleIcon
+        : InfoIcon
+
   return (
-    <form onSubmit={handleUpload} className="card">
-      <h2>Upload a document image</h2>
-      <input
-        type="file"
-        accept="image/*"
-        onChange={(e) => setFile(e.target.files[0])}
-        required
-      />
-      <button type="submit" disabled={busy}>
-        {busy ? 'Processing...' : 'Upload'}
-      </button>
-      {pendingId && !busy && (
-        <button type="button" onClick={handleCheckAgain}>
-          Check again
-        </button>
-      )}
-      {message && <p>{message}</p>}
-    </form>
+    <section className="card" aria-labelledby="upload-heading">
+      <div className="card__header">
+        <div className="card__title-group">
+          <span className="card__eyebrow">Step 1</span>
+          <h2 id="upload-heading">Upload a document scan</h2>
+        </div>
+      </div>
+
+      <form className="stack" onSubmit={handleUpload}>
+        {!file ? (
+          <div
+            className={`dropzone${dragging ? ' is-dragging' : ''}`}
+            onDragOver={(e) => {
+              e.preventDefault()
+              setDragging(true)
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={handleDrop}
+          >
+            <UploadIcon className="dropzone__icon" width={28} height={28} />
+            <span className="dropzone__title">Drag a scan here, or browse files</span>
+            <span className="text-sm muted" id="upload-hint">
+              PNG, JPG or TIFF · one page per upload
+            </span>
+            <input
+              ref={inputRef}
+              id="document-file"
+              className="dropzone__input"
+              type="file"
+              accept="image/*"
+              aria-describedby="upload-hint"
+              onChange={(e) => selectFile(e.target.files?.[0])}
+            />
+            <label className="sr-only" htmlFor="document-file">
+              Choose a document image to upload
+            </label>
+          </div>
+        ) : (
+          <div className="file-preview">
+            {thumbUrl ? (
+              <img className="file-preview__thumb" src={thumbUrl} alt={`Preview of ${file.name}`} />
+            ) : (
+              <span className="file-preview__thumb" style={{ display: 'grid', placeItems: 'center' }}>
+                <ImageIcon />
+              </span>
+            )}
+            <span className="file-preview__meta">
+              <span className="file-preview__name">{file.name}</span>
+              <span className="text-xs muted">{formatBytes(file.size)}</span>
+            </span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--icon"
+              onClick={clearFile}
+              disabled={busy}
+            >
+              <CloseIcon width={16} height={16} />
+              <span className="sr-only">Remove {file.name}</span>
+            </button>
+          </div>
+        )}
+
+        <div className="btn-row">
+          <button type="submit" className="btn btn--primary" disabled={busy || !file}>
+            {busy && <span className="spinner" aria-hidden="true" />}
+            {busy ? 'Processing…' : 'Upload & analyze'}
+          </button>
+          {pendingId && !busy && (
+            <button type="button" className="btn" onClick={handleCheckAgain}>
+              Check again
+            </button>
+          )}
+        </div>
+
+        {busy && (
+          <div
+            className="progress"
+            role="progressbar"
+            aria-label="Processing document"
+            aria-valuetext="In progress"
+          >
+            <div className="progress__bar" />
+          </div>
+        )}
+
+        <div aria-live="polite" aria-atomic="true">
+          {message && (
+            <p className={`alert alert--${message.tone}`}>
+              <AlertToneIcon className="alert__icon" width={16} height={16} />
+              <span>{message.text}</span>
+            </p>
+          )}
+        </div>
+      </form>
+    </section>
   )
 }
