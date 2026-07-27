@@ -1,0 +1,40 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ocr_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ocr_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ocr_gov}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-ocr_user}:${POSTGRES_PASSWORD:-ocr_pass}@db:5432/${POSTGRES_DB:-ocr_gov}
+    depends_on:
+      - db
+    volumes:
+      - uploads_data:/data/uploads
+      - ./backend/models:/app/models
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    environment:
+      VITE_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  db_data:
+  uploads_data:
