@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     tesseract_cmd: str = os.getenv("TESSERACT_CMD", "tesseract")
     ml_model_name: str = os.getenv("ML_MODEL_NAME", "bert-base-uncased")
     upload_dir: str = os.getenv("UPLOAD_DIR", "./data/uploads")
+    document_retention_days: int = int(os.getenv("DOCUMENT_RETENTION_DAYS", "30"))
 
     cors_origins_raw: str = os.getenv("CORS_ORIGINS", "http://localhost:5173")
 

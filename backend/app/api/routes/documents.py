@@ -11,7 +11,7 @@ from app.api.deps import get_current_user, require_role
 from app.core.config import settings
 from app.db import models
 from app.db.database import SessionLocal, get_db
-from app.services import pipeline, render_preview, storage
+from app.services import cleanup, pipeline, render_preview, storage
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -118,6 +118,23 @@ def upload_document(
 
     background_tasks.add_task(_run_pipeline_and_store, doc_id, temp_path)
     return doc
+
+@router.post("/cleanup/expired")
+def cleanup_expired_documents(
+    db: Session = Depends(get_db),
+    user: models.User = Depends(
+        require_role(models.UserRole.admin)
+    ),
+):
+    result = cleanup.cleanup_expired_documents(db)
+
+    return {
+        "status": "ok",
+        "retention_days": settings.document_retention_days,
+        "deleted_documents": result["deleted_documents"],
+        "deleted_files": result["deleted_files"],
+        "errors": result["errors"],
+    }
 
 
 @router.get("/{document_id}/status")

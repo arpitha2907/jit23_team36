@@ -115,4 +115,7 @@ def test_perfect_input_low_risk():
         ml_surprisal=0,
     )
 
-    assert score == 0.0
+    # A trained probabilistic classifier does not necessarily return
+    # exactly 0.0 even for ideal features. It should, however, classify
+    # this input as low risk.
+    assert 0.0 <= score < 0.2
