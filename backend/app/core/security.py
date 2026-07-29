@@ -23,18 +23,28 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+def _get_secret_key() -> str:
+    if not settings.secret_key:
+        raise RuntimeError(
+            "SECRET_KEY is not set. Generate one with: "
+            "python -c \"import secrets; print(secrets.token_urlsafe(64))\" "
+            "and put it in your .env"
+        )
+    return settings.secret_key
+
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
     expire = datetime.utcnow() + (
         expires_delta or timedelta(minutes=settings.access_token_expire_minutes)
     )
     to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    return jwt.encode(to_encode, _get_secret_key(), algorithm=settings.algorithm)
 
 
 def decode_access_token(token: str) -> Optional[dict]:
     try:
-        return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        return jwt.decode(token, _get_secret_key(), algorithms=[settings.algorithm])
     except JWTError:
         return None
 

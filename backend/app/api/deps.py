@@ -35,3 +35,33 @@ def require_role(*roles: models.UserRole):
         return user
 
     return checker
+
+
+def require_document_access(*roles: models.UserRole):
+    """Fetches the requested document, 404ing if it doesn't exist.
+
+    If `roles` is given, the caller's role must be one of them (like
+    `require_role`). Regardless of `roles`, an `uploader` may only access
+    documents they own -- `reviewer`/`admin` are never ownership-restricted,
+    since reviewing other users' uploads is their job.
+    """
+
+    def checker(
+        document_id: str,
+        db: Session = Depends(get_db),
+        user: models.User = Depends(get_current_user),
+    ) -> models.Document:
+        if roles and user.role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
+        doc = db.query(models.Document).filter(models.Document.id == document_id).first()
+        if doc is None:
+            raise HTTPException(status_code=404, detail="Document not found")
+        if user.role == models.UserRole.uploader and doc.owner_id != user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions"
+            )
+        return doc
+
+    return checker

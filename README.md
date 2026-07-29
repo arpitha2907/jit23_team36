@@ -7,7 +7,7 @@ A full-stack OCR error detection system designed for government document digitiz
 ## Project Workflow
 
 ```text
-Frontend (Upload Image)
+Frontend (Select Document Type + Upload Image)
         │
         ▼
 Backend API
@@ -19,11 +19,11 @@ Image Preprocessing (OpenCV)
 OCR Engine (Tesseract)
         │
         ▼
-Error Detection
-(Rules + NLP + ML)
+Context-Aware Detection
+(Field Schema + Rules + NLP + ML)
         │
         ▼
-Error Correction
+Human Review
 (Spell Check + Context AI)
         │
         ▼
@@ -82,7 +82,22 @@ No external API keys are required.
 The project runs completely offline using:
 
 - Tesseract OCR
-- Hugging Face `bert-base-uncased`
+- Hugging Face `bert-base-uncased` for English
+- Hugging Face `google/muril-base-cased` for Indic or mixed-language context
+
+## Multilingual OCR
+
+The upload form accepts English, Assamese, Bengali, Gujarati, Hindi, Kannada,
+Malayalam, Marathi, Odia, Punjabi, Sanskrit, Tamil, Telugu, Urdu, and common
+English + native-language combinations. Tesseract language data for these
+languages is included in the backend image. The selected language is passed to
+Tesseract, stored with the document, and used to choose the contextual model.
+
+The English dictionary checker is disabled for native-script tokens so Indian
+language words are not incorrectly marked as English spelling errors. For
+production, fine-tune or evaluate MuRIL/IndicBERT on the target document type
+and language; the generic model is a multilingual baseline, not a replacement
+for labeled correction data.
 
 ---
 
@@ -168,10 +183,12 @@ Available roles:
 |-----------|--------|-------------|
 | `/auth/register` | POST | Register a new user |
 | `/auth/login` | POST | User login |
-| `/documents/upload` | POST | Upload a document |
+| `/documents/upload` | POST | Upload a document image with `doc_type` and `ocr_languages` (for example `eng`, `hin`, or `eng+hin`) |
 | `/documents/{id}/status` | GET | Check processing status |
 | `/documents/{id}/result` | GET | OCR results and suggestions |
 | `/documents/{id}/correct` | POST | Submit corrections |
+| `/documents/{id}/download/image` | GET | Download the layout-preserving corrected PNG |
+| `/documents/{id}/download/text` | GET | Download reviewed text as UTF-8 plain text |
 | `/documents/{id}/audit` | GET | View audit logs |
 
 ---

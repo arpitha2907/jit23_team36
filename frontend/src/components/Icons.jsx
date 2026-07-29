@@ -32,6 +32,16 @@ export function UploadIcon(props) {
   )
 }
 
+export function DownloadIcon(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M12 4v11" />
+      <path d="M8 11l4 4 4-4" />
+      <path d="M4 18v1a2 2 0 002 2h12a2 2 0 002-2v-1" />
+    </svg>
+  )
+}
+
 export function AlertIcon(props) {
   return (
     <svg {...base} {...props}>

@@ -1,3 +1,4 @@
+import enum
 import uuid
 from typing import List, Optional
 
@@ -9,7 +10,6 @@ from app.db.models import DocumentStatus, UserRole
 class UserCreate(BaseModel):
     email: str
     password: str
-    role: UserRole = UserRole.uploader
 
 
 class UserOut(BaseModel):
@@ -21,14 +21,28 @@ class UserOut(BaseModel):
         from_attributes = True
 
 
+class UserRoleUpdate(BaseModel):
+    role: UserRole
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str
 
 
+class DocumentType(str, enum.Enum):
+    generic = "generic"
+    aadhaar = "aadhaar"
+    pan = "pan"
+    passport = "passport"
+    marksheet = "marksheet"
+
+
 class DocumentOut(BaseModel):
     id: uuid.UUID
     original_filename: str
+    doc_type: DocumentType
+    ocr_languages: str
     status: DocumentStatus
 
     class Config:
@@ -56,6 +70,8 @@ class FieldResult(BaseModel):
 
 class DocumentResult(BaseModel):
     id: str
+    doc_type: DocumentType
+    ocr_languages: str
     status: DocumentStatus
     raw_text: Optional[str] = None
     corrected_text: Optional[str] = None

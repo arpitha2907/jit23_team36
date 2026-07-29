@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getAudit, getPreviewImageUrl, getResult, submitCorrections } from '../api'
+import {
+  downloadDocumentImage,
+  downloadDocumentText,
+  getAudit,
+  getPreviewImageUrl,
+  getResult,
+  submitCorrections,
+} from '../api'
 import {
   AlertIcon,
   CheckCircleIcon,
   CheckIcon,
   CloseIcon,
+  DownloadIcon,
   FileTextIcon,
   HistoryIcon,
   ImageIcon,
@@ -36,18 +44,17 @@ function ScoreMeter({ score }) {
   )
 }
 
-export default function Results({ result }) {
+export default function Results({ result, onResult }) {
   const [decisions, setDecisions] = useState({})
   const [customInputs, setCustomInputs] = useState({})
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [correctedText, setCorrectedText] = useState(null)
-  const [docStatus, setDocStatus] = useState(null)
   const [auditLog, setAuditLog] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
   const [flaggedOnly, setFlaggedOnly] = useState(true)
   const [query, setQuery] = useState('')
+  const [downloading, setDownloading] = useState('')
 
   const docId = result?.id
 
@@ -57,8 +64,6 @@ export default function Results({ result }) {
     setCustomInputs({})
     setSaved(false)
     setError('')
-    setCorrectedText(null)
-    setDocStatus(null)
     setAuditLog(null)
     setFlaggedOnly(true)
     setQuery('')
@@ -146,6 +151,36 @@ export default function Results({ result }) {
     setSaved(false)
   }
 
+  function saveBlob(blob, filename) {
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  async function handleDownload(kind) {
+    setError('')
+    setDownloading(kind)
+    try {
+      const type = result.doc_type || 'government-document'
+      if (kind === 'image') {
+        const blob = await downloadDocumentImage(result.id)
+        saveBlob(blob, `${type}-corrected.png`)
+      } else {
+        const blob = await downloadDocumentText(result.id)
+        saveBlob(blob, `${type}-corrected.txt`)
+      }
+    } catch (err) {
+      setError('Download failed: ' + (err?.response?.data?.detail || err.message))
+    } finally {
+      setDownloading('')
+    }
+  }
+
   async function handleSave() {
     setError('')
     setSaving(true)
@@ -153,11 +188,12 @@ export default function Results({ result }) {
       await submitCorrections(result.id, Object.values(decisions))
       setSaved(true)
 
-      // Pull the freshly updated corrected text/status and audit trail so
-      // they're visible right here instead of only via the API docs.
+      // Refetch the whole document -- the /correct response doesn't include
+      // per-field data, so this is the only way to get the table (OCR
+      // confidence, error score, flagged badges) out of its pre-correction
+      // state along with the corrected text/status and audit trail.
       const [updated, audit] = await Promise.all([getResult(result.id), getAudit(result.id)])
-      setCorrectedText(updated.corrected_text)
-      setDocStatus(updated.status)
+      onResult(updated)
       setAuditLog(audit)
     } catch (err) {
       if (err?.response?.status === 403) {
@@ -175,7 +211,7 @@ export default function Results({ result }) {
   }
 
   return (
-    <section className="card" aria-labelledby="results-heading">
+    <section className="card results-card" aria-labelledby="results-heading">
       <div className="card__header">
         <div className="card__title-group">
           <span className="card__eyebrow">Step 2</span>
@@ -184,6 +220,33 @@ export default function Results({ result }) {
             Tokens with a fused error score of {FLAG_THRESHOLD.toFixed(1)} or higher are flagged as
             likely OCR errors. Nothing is written until you save.
           </p>
+        </div>
+        <div className="results-header__aside">
+          <div className="results-header__meta">
+            <span className="badge badge--brand">{result.doc_type || 'generic'}</span>
+            <span className="badge">OCR: {result.ocr_languages || 'eng'}</span>
+            {result.status && <span className="badge badge--ok">{result.status.replace('_', ' ')}</span>}
+          </div>
+          <div className="btn-row">
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => handleDownload('image')}
+              disabled={Boolean(downloading)}
+            >
+              <DownloadIcon width={15} height={15} />
+              {downloading === 'image' ? 'Preparing image…' : 'Download image'}
+            </button>
+            <button
+              type="button"
+              className="btn btn--sm"
+              onClick={() => handleDownload('text')}
+              disabled={Boolean(downloading)}
+            >
+              <FileTextIcon width={15} height={15} />
+              {downloading === 'text' ? 'Preparing text…' : 'Download text'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -456,15 +519,15 @@ export default function Results({ result }) {
         )}
       </div>
 
-      {correctedText !== null && (
+      {result.corrected_text != null && (
         <div className="card__section stack">
           <div className="card__header" style={{ marginBottom: 0 }}>
             <h3>
               <FileTextIcon width={16} height={16} /> Corrected document
             </h3>
-            {docStatus && <span className="badge badge--ok">{docStatus.replace('_', ' ')}</span>}
+            <span className="text-xs muted">Ready to download as plain text</span>
           </div>
-          <p className="prose-box">{correctedText}</p>
+          <p className="prose-box">{result.corrected_text}</p>
         </div>
       )}
 
@@ -474,8 +537,8 @@ export default function Results({ result }) {
             <ImageIcon width={16} height={16} /> Layout preview
           </h3>
           <p className="text-sm muted">
-            Corrected text redrawn at each word's original position from the scan — labels in
-            gray/bold, values in black, mirroring the input document's layout.
+            Approved corrections are placed over the original scan at the same coordinates. The
+            renderer preserves the document layout while replacing only the reviewed words.
           </p>
           <figure className="preview-figure">
             <img

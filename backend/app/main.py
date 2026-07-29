@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth, documents
 from app.core.config import settings
-from app.db.database import Base, engine
+from app.db.database import initialize_schema
 
-Base.metadata.create_all(bind=engine)
+initialize_schema()
 
 app = FastAPI(
     title="Context-Driven OCR Error Detection API",

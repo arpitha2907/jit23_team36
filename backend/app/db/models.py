@@ -56,6 +56,7 @@ class Document(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     owner_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     doc_type = Column(String, nullable=True)  # aadhaar, passport, marksheet, generic
+    ocr_languages = Column(String, nullable=False, default="eng")
     original_filename = Column(String, nullable=False)
     encrypted_image_path = Column(String, nullable=False)
     raw_ocr_text = Column(Text, nullable=True)

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { setUnauthorizedHandler } from './api'
 import Login from './components/Login'
 import Results from './components/Results'
 import Upload from './components/Upload'
@@ -32,6 +33,13 @@ export default function App() {
     setLoggedIn(false)
     setResult(null)
   }
+
+  // An expired/invalid token surfaces as a 401 from any API call; route
+  // that straight back to the login screen instead of a raw error message.
+  useEffect(() => {
+    setUnauthorizedHandler(handleLogout)
+    return () => setUnauthorizedHandler(null)
+  }, [])
 
   return (
     <>
@@ -72,15 +80,32 @@ export default function App() {
           <Login onLoggedIn={() => setLoggedIn(true)} />
         ) : (
           <>
-            <div>
-              <h1>Document review</h1>
-              <p className="muted">
-                Upload a scanned document, then approve or reject each flagged field before the
-                corrected text is stored.
-              </p>
+            <div className="workspace-hero">
+              <div className="workspace-hero__copy">
+                <span className="workspace-hero__eyebrow">Secure review workspace</span>
+                <h1>Turn scanned documents into trusted records.</h1>
+                <p>
+                  Upload a government document, inspect the context-aware findings, and approve
+                  every correction before it becomes part of the final record.
+                </p>
+              </div>
+              <div className="workspace-hero__steps" aria-label="Review workflow">
+                <span className="workspace-step is-active">
+                  <strong>01</strong>
+                  Upload
+                </span>
+                <span className="workspace-step">
+                  <strong>02</strong>
+                  Review
+                </span>
+                <span className="workspace-step">
+                  <strong>03</strong>
+                  Export
+                </span>
+              </div>
             </div>
             <Upload onResult={setResult} />
-            <Results result={result} />
+            <Results result={result} onResult={setResult} />
           </>
         )}
       </main>

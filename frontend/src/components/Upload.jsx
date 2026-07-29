@@ -16,6 +16,8 @@ function formatBytes(bytes) {
 
 export default function Upload({ onResult }) {
   const [file, setFile] = useState(null)
+  const [docType, setDocType] = useState('generic')
+  const [ocrLanguages, setOcrLanguages] = useState('eng')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState(null) // { tone, text }
   const [pendingId, setPendingId] = useState(null)
@@ -69,7 +71,7 @@ export default function Upload({ onResult }) {
     setBusy(true)
     setMessage({ tone: 'info', text: 'Uploading and running the OCR pipeline…' })
     try {
-      const doc = await uploadDocument(file)
+      const doc = await uploadDocument(file, docType, ocrLanguages)
       await pollUntilReady(doc.id)
     } catch (err) {
       setMessage({
@@ -87,6 +89,11 @@ export default function Upload({ onResult }) {
     setMessage({ tone: 'info', text: 'Checking processing status…' })
     try {
       await pollUntilReady(pendingId)
+    } catch (err) {
+      setMessage({
+        tone: 'error',
+        text: 'Check failed: ' + (err?.response?.data?.detail || err.message),
+      })
     } finally {
       setBusy(false)
     }
@@ -123,11 +130,14 @@ export default function Upload({ onResult }) {
         : InfoIcon
 
   return (
-    <section className="card" aria-labelledby="upload-heading">
+    <section className="card upload-card" aria-labelledby="upload-heading">
       <div className="card__header">
         <div className="card__title-group">
           <span className="card__eyebrow">Step 1</span>
-          <h2 id="upload-heading">Upload a document scan</h2>
+          <h2 id="upload-heading">Start a document review</h2>
+          <p className="text-sm muted">
+            Choose the document type first so structured fields receive the right checks.
+          </p>
         </div>
       </div>
 
@@ -184,6 +194,60 @@ export default function Upload({ onResult }) {
             </button>
           </div>
         )}
+
+        <label className="field__label" htmlFor="document-type">
+          Document type
+          <select
+            id="document-type"
+            className="select"
+            value={docType}
+            onChange={(e) => setDocType(e.target.value)}
+            disabled={busy}
+          >
+            <option value="generic">Generic government document</option>
+            <option value="aadhaar">Aadhaar card</option>
+            <option value="pan">PAN card</option>
+            <option value="passport">Passport</option>
+            <option value="marksheet">Mark sheet / certificate</option>
+          </select>
+          <span className="text-xs muted">
+            This controls field validation and keeps the language model away from structured IDs
+            and dates.
+          </span>
+        </label>
+
+        <label className="field__label" htmlFor="ocr-languages">
+          Document language
+          <select
+            id="ocr-languages"
+            className="select"
+            value={ocrLanguages}
+            onChange={(e) => setOcrLanguages(e.target.value)}
+            disabled={busy}
+          >
+            <option value="eng">English</option>
+            <option value="asm">Assamese</option>
+            <option value="ben">Bengali</option>
+            <option value="guj">Gujarati</option>
+            <option value="hin">Hindi</option>
+            <option value="kan">Kannada</option>
+            <option value="mal">Malayalam</option>
+            <option value="mar">Marathi</option>
+            <option value="ori">Odia</option>
+            <option value="pan">Punjabi</option>
+            <option value="san">Sanskrit</option>
+            <option value="tam">Tamil</option>
+            <option value="tel">Telugu</option>
+            <option value="urd">Urdu</option>
+            <option value="eng+hin">English + Hindi</option>
+            <option value="eng+mar">English + Marathi</option>
+            <option value="eng+tam">English + Tamil</option>
+            <option value="eng+tel">English + Telugu</option>
+          </select>
+          <span className="text-xs muted">
+            Choose the script used on the scan. Mixed selections support common English + native-language documents.
+          </span>
+        </label>
 
         <div className="btn-row">
           <button type="submit" className="btn btn--primary" disabled={busy || !file}>

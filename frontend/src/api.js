@@ -10,6 +10,25 @@ client.interceptors.request.use((config) => {
   return config
 })
 
+// Lets App.jsx react to session expiry (expired/invalid token) without every
+// call site needing to special-case 401s itself.
+let onUnauthorized = null
+
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn
+}
+
+client.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error?.response?.status === 401) {
+      localStorage.removeItem('token')
+      onUnauthorized?.()
+    }
+    return Promise.reject(error)
+  }
+)
+
 export async function login(email, password) {
   const form = new URLSearchParams()
   form.append('username', email)
@@ -25,9 +44,11 @@ export async function register(email, password, role = 'uploader') {
   return data
 }
 
-export async function uploadDocument(file) {
+export async function uploadDocument(file, docType = 'generic', ocrLanguages = 'eng') {
   const form = new FormData()
   form.append('file', file)
+  form.append('doc_type', docType)
+  form.append('ocr_languages', ocrLanguages)
   const { data } = await client.post('/documents/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
@@ -62,6 +83,20 @@ export async function getPreviewImageUrl(id) {
     responseType: 'blob',
   })
   return URL.createObjectURL(response.data)
+}
+
+export async function downloadDocumentImage(id) {
+  const { data } = await client.get(`/documents/${id}/download/image`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
+export async function downloadDocumentText(id) {
+  const { data } = await client.get(`/documents/${id}/download/text`, {
+    responseType: 'blob',
+  })
+  return data
 }
 
 export default client
