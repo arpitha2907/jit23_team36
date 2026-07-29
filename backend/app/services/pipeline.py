@@ -1,74 +1,51 @@
-<<<<<<< HEAD
-"""Orchestrates the full per-document flow described in project_plan.md:
-preprocess -> OCR -> line/field-label grouping -> (rules + NLP + ML) error
-detection -> fusion -> correction suggestions.
-"""
-=======
 """Orchestrates the full per-document OCR pipeline:
 
 preprocess -> OCR -> field extraction -> rules/NLP/ML detection
 -> fusion -> correction suggestions.
 """
 
->>>>>>> accb266 (Implement automated tests and batched ML inference)
 from app.services import (
     correction,
+    document_context,
     field_extraction,
     fusion,
+    languages,
     ml_context,
     nlp_check,
     ocr_service,
     preprocessing,
-    rules,
 )
 
-<<<<<<< HEAD
-=======
-
->>>>>>> accb266 (Implement automated tests and batched ML inference)
 SUGGESTION_THRESHOLD = 0.4
 
 
-def process_document(image_path: str) -> dict:
+def process_document(
+    image_path: str,
+    doc_type: str = "generic",
+    ocr_languages: str | list[str] | None = None,
+) -> dict:
+    normalized_languages = languages.normalize_language_codes(ocr_languages)
     processed_image = preprocessing.preprocess_image(image_path)
-<<<<<<< HEAD
-    image_height, image_width = processed_image.shape[:2]
-
-    ocr_result = ocr_service.run_ocr(processed_image)
-    words = field_extraction.annotate_field_labels(ocr_result["words"])
-    tokens = [w["text"] for w in words]
-
-    field_results = []
-    for i, w in enumerate(words):
-        token = w["text"]
-        r_flag = rules.rule_flag(token)
-        n_flag = nlp_check.nlp_flag(token)
-        try:
-            surprisal = ml_context.token_surprisal(tokens, i)
-        except Exception:
-            # ML layer is best-effort: if model weights aren't available
-            # (e.g. offline), fall back to 0 surprisal and let rules/NLP
-            # still drive detection.
-            surprisal = 0.0
-
-        score = fusion.fused_error_score(w["conf"], r_flag, n_flag, surprisal)
-
-        suggestions = []
-        if score >= SUGGESTION_THRESHOLD and not w["is_label_token"]:
-            # Only suggest corrections for values -- labels are boilerplate
-            # ("Date of Birth") and don't need spellcheck/context repair.
-            suggestions = correction.suggest_corrections(tokens, i)
-=======
 
     image_height, image_width = processed_image.shape[:2]
 
-    ocr_result = ocr_service.run_ocr(processed_image)
+    ocr_result = ocr_service.run_ocr(processed_image, languages=normalized_languages)
 
     words = field_extraction.annotate_field_labels(
         ocr_result["words"]
     )
 
     tokens = [w["text"] for w in words]
+    normalized_doc_type = document_context.normalize_document_type(doc_type)
+
+    # Structured fields get deterministic validators.  Only values where
+    # language context is meaningful are sent through the expensive model.
+    context_indices = [
+        i
+        for i, word in enumerate(words)
+        if document_context.should_run_context_model(word, normalized_doc_type)
+    ]
+    surprisal_by_index = {}
 
     # ---------------------------------------------------------
     # BATCHED ML INFERENCE
@@ -80,23 +57,69 @@ def process_document(image_path: str) -> dict:
     # ---------------------------------------------------------
 
     try:
-        surprisals = ml_context.batch_token_surprisal(tokens)
+        if context_indices:
+            context_scores = ml_context.batch_token_surprisal(
+                tokens,
+                _indices=context_indices,
+                language_codes=normalized_languages,
+            )
+            surprisal_by_index = dict(zip(context_indices, context_scores))
     except Exception:
         # ML is best-effort. The rest of the OCR/error-detection
         # pipeline must continue working if model weights are
         # unavailable or inference fails.
-        surprisals = [0.0] * len(tokens)
+        surprisal_by_index = {}
+
+    # Collect all contextual suggestions in batches before building the
+    # result rows.  This avoids one BERT forward pass per flagged token.
+    suggestion_indices = []
+    for i, word in enumerate(words):
+        if not document_context.should_run_context_model(word, normalized_doc_type):
+            continue
+        rule_flag = document_context.field_rule_flag(
+            word["text"], word.get("field_label"), normalized_doc_type
+        )
+        nlp_flag = (
+            nlp_check.nlp_flag(word["text"], languages=normalized_languages)
+            if document_context.should_run_dictionary_check(word.get("field_label"))
+            else False
+        )
+        score = fusion.fused_error_score(
+            word["conf"],
+            rule_flag,
+            nlp_flag,
+            surprisal_by_index.get(i, 0.0),
+        )
+        if score >= SUGGESTION_THRESHOLD and not word["is_label_token"]:
+            suggestion_indices.append(i)
+
+    try:
+        contextual_candidates = ml_context.batch_top_k_predictions(
+            tokens,
+            suggestion_indices,
+            language_codes=normalized_languages,
+        )
+    except Exception:
+        contextual_candidates = {}
 
     field_results = []
 
     for i, w in enumerate(words):
         token = w["text"]
 
-        r_flag = rules.rule_flag(token)
+        r_flag = document_context.field_rule_flag(
+            token,
+            w.get("field_label"),
+            normalized_doc_type,
+        )
 
-        n_flag = nlp_check.nlp_flag(token)
+        n_flag = (
+            nlp_check.nlp_flag(token, languages=normalized_languages)
+            if document_context.should_run_dictionary_check(w.get("field_label"))
+            else False
+        )
 
-        surprisal = surprisals[i]
+        surprisal = surprisal_by_index.get(i, 0.0)
 
         score = fusion.fused_error_score(
             w["conf"],
@@ -114,8 +137,12 @@ def process_document(image_path: str) -> dict:
             suggestions = correction.suggest_corrections(
                 tokens,
                 i,
+                # The batch call above already made the best-effort ML
+                # attempt.  Pass an empty list on failure so correction does
+                # not retry one model call per flagged token.
+                contextual_candidates=contextual_candidates.get(i, []),
+                language_codes=normalized_languages,
             )
->>>>>>> accb266 (Implement automated tests and batched ML inference)
 
         field_results.append(
             {
@@ -138,11 +165,9 @@ def process_document(image_path: str) -> dict:
 
     return {
         "raw_text": ocr_result["text"],
+        "doc_type": normalized_doc_type,
+        "ocr_languages": "+".join(normalized_languages),
         "fields": field_results,
         "image_width": image_width,
         "image_height": image_height,
-<<<<<<< HEAD
     }
-=======
-    }
->>>>>>> accb266 (Implement automated tests and batched ML inference)

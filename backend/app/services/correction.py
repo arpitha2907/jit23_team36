@@ -30,7 +30,13 @@ def _clean_contextual_candidates(candidates: list) -> list:
     return cleaned
 
 
-def suggest_corrections(sentence_tokens: list, index: int, k: int = 5) -> list:
+def suggest_corrections(
+    sentence_tokens: list,
+    index: int,
+    k: int = 5,
+    contextual_candidates: list | None = None,
+    language_codes=None,
+) -> list:
     token = sentence_tokens[index]
 
     # Numeric/ID-style fields: undo classic OCR digit/letter confusions
@@ -40,16 +46,28 @@ def suggest_corrections(sentence_tokens: list, index: int, k: int = 5) -> list:
         normalized = rules.normalize_confusables(token)
         return [normalized] if normalized != token else []
 
-    spell_candidates = nlp_check.spelling_candidates(token, k=k)
+    spell_candidates = nlp_check.spelling_candidates(
+        token,
+        k=k,
+        languages=language_codes,
+    )
 
-    contextual_candidates = []
-    try:
-        raw = ml_context.top_k_predictions(sentence_tokens, index, k=k)
-        contextual_candidates = _clean_contextual_candidates(raw)
-    except Exception:
-        # ML layer is best-effort; detection still works from rules+NLP if
-        # the model isn't available (e.g. no internet to download weights).
-        pass
+    if contextual_candidates is None:
+        contextual_candidates = []
+        try:
+            raw = ml_context.top_k_predictions(
+                sentence_tokens,
+                index,
+                k=k,
+                language_codes=language_codes,
+            )
+            contextual_candidates = _clean_contextual_candidates(raw)
+        except Exception:
+            # ML layer is best-effort; detection still works from rules+NLP if
+            # the model isn't available (e.g. no internet to download weights).
+            pass
+    else:
+        contextual_candidates = _clean_contextual_candidates(contextual_candidates)
 
     ranked = []
     seen = set()

@@ -5,6 +5,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
 from app import schemas
+from app.api.deps import require_role
 from app.core.config import settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.db import models
@@ -21,9 +22,25 @@ def register(payload: schemas.UserCreate, db: Session = Depends(get_db)):
     user = models.User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
-        role=payload.role,
+        role=models.UserRole.uploader,
     )
     db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.patch("/users/{user_id}/role", response_model=schemas.UserOut)
+def update_user_role(
+    user_id: str,
+    payload: schemas.UserRoleUpdate,
+    db: Session = Depends(get_db),
+    _admin: models.User = Depends(require_role(models.UserRole.admin)),
+):
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.role = payload.role
     db.commit()
     db.refresh(user)
     return user

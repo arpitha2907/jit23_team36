@@ -89,7 +89,7 @@ def test_pipeline_uses_batch_inference():
     ), patch.object(
         pipeline.ml_context,
         "batch_token_surprisal",
-        return_value=[0.1, 0.2],
+        return_value=[0.2],
     ) as batch_mock, patch.object(
         pipeline.correction,
         "suggest_corrections",
@@ -99,11 +99,13 @@ def test_pipeline_uses_batch_inference():
         result = pipeline.process_document("fake.jpg")
 
     batch_mock.assert_called_once_with(
-        ["Name:", "Anish"]
+        ["Name:", "Anish"],
+        _indices=[1],
+        language_codes=["eng"],
     )
 
     assert len(result["fields"]) == 2
 
-    assert result["fields"][0]["ml_surprisal"] == 0.1
+    assert result["fields"][0]["ml_surprisal"] == 0.0
 
     assert result["fields"][1]["ml_surprisal"] == 0.2

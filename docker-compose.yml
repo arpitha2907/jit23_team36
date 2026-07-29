@@ -17,10 +17,12 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-ocr_user}:${POSTGRES_PASSWORD:-ocr_pass}@db:5432/${POSTGRES_DB:-ocr_gov}
+      HF_HOME: /data/huggingface
     depends_on:
       - db
     volumes:
       - uploads_data:/data/uploads
+      - models_cache:/data/huggingface
       - ./backend/models:/app/models
     ports:
       - "8000:8000"
@@ -38,3 +40,4 @@ services:
 volumes:
   db_data:
   uploads_data:
+  models_cache:
