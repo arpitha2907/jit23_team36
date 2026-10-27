@@ -36,6 +36,7 @@ def suggest_corrections(
     k: int = 5,
     contextual_candidates: list | None = None,
     language_codes=None,
+    llm_candidates: list | None = None,
 ) -> list:
     token = sentence_tokens[index]
 
@@ -45,6 +46,13 @@ def suggest_corrections(
     if _looks_numeric_field(token):
         normalized = rules.normalize_confusables(token)
         return [normalized] if normalized != token else []
+
+    # GPT saw the whole line and found nothing to fix (a correct name, or
+    # scanner noise): the dictionary/BERT candidates for such tokens are
+    # noise themselves ("Ramesh" -> "rates, frames"), so don't show them.
+    # The reviewer can still type a value. None = GPT wasn't consulted.
+    if llm_candidates is not None and not llm_candidates:
+        return []
 
     spell_candidates = nlp_check.spelling_candidates(
         token,
@@ -77,7 +85,10 @@ def suggest_corrections(
     # can suggest fluent-sounding but unrelated words (see project_plan.md's
     # note on "No Free Lunches" -- generic LLM correction can hallucinate).
     # Contextual candidates are kept as secondary options.
-    for candidate in spell_candidates + contextual_candidates:
+    # Optional GPT candidates (llm_correction.py) go first: they see the whole
+    # line and are told to leave valid words alone, so they are the most
+    # targeted -- and the reviewer still approves every suggestion.
+    for candidate in (llm_candidates or []) + spell_candidates + contextual_candidates:
         key = candidate.lower()
         if not candidate or key == token.lower() or key in seen:
             continue

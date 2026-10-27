@@ -79,11 +79,28 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 No external API keys are required.
 
-The project runs completely offline using:
+By default the project runs completely offline using:
 
 - Tesseract OCR
 - Hugging Face `bert-base-uncased` for English
 - Hugging Face `google/muril-base-cased` for Indic or mixed-language context
+
+### Optional: GPT correction suggestions
+
+Set `LLM_SUGGESTIONS_ENABLED=true` and `OPENAI_API_KEY` (and optionally
+`OPENAI_MODEL`, default `gpt-5-mini`) to add GPT suggestions for flagged
+free-text words such as names, addresses and remarks. The pipeline makes one
+batched call per document and puts GPT's candidates ahead of the local
+dictionary/BERT ones; for words GPT judges already correct (or pure scanner
+noise) the local candidates are hidden too. Reviewers still approve every
+change. `OPENAI_REASONING_EFFORT` (default `minimal`) trades suggestion
+quality for speed; leave it empty for models without reasoning.
+
+This is the only feature that sends document text off the machine. Only
+flagged words and the OCR line they sit on are sent, with every digit masked
+as `#`, so ID numbers, dates and PIN codes never leave the server (they keep
+using the deterministic digit fixes). If the call fails or the feature is
+off, suggestions fall back to the local models.
 
 ## Multilingual OCR
 

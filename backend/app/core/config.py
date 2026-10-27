@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     ml_model_name_indic: str = os.getenv(
         "ML_MODEL_NAME_INDIC", "google/muril-base-cased"
     )
+    # Optional GPT-backed suggestions for flagged words. Off by default:
+    # enabling it sends digit-masked OCR text of flagged lines to OpenAI.
+    llm_suggestions_enabled: bool = (
+        os.getenv("LLM_SUGGESTIONS_ENABLED", "false").lower() == "true"
+    )
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+    # Empty = don't send the parameter (for models without reasoning).
+    openai_reasoning_effort: str = os.getenv("OPENAI_REASONING_EFFORT", "minimal")
+
     upload_dir: str = os.getenv("UPLOAD_DIR", "./data/uploads")
     max_upload_size_mb: int = int(os.getenv("MAX_UPLOAD_SIZE_MB", "15"))
 
