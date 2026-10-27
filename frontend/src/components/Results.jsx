@@ -48,6 +48,9 @@ export default function Results({ result, onResult }) {
   const [decisions, setDecisions] = useState({})
   const [customInputs, setCustomInputs] = useState({})
   const [saved, setSaved] = useState(false)
+  // Bumped on every successful save so the preview re-renders each time,
+  // not just on the first save (`saved` stays true after that).
+  const [saveCount, setSaveCount] = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [auditLog, setAuditLog] = useState(null)
@@ -89,7 +92,7 @@ export default function Results({ result, onResult }) {
       cancelled = true
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [docId, saved])
+  }, [docId, saveCount])
 
   const fields = result?.fields ?? []
 
@@ -187,6 +190,7 @@ export default function Results({ result, onResult }) {
     try {
       await submitCorrections(result.id, Object.values(decisions))
       setSaved(true)
+      setSaveCount((n) => n + 1)
 
       // Refetch the whole document -- the /correct response doesn't include
       // per-field data, so this is the only way to get the table (OCR
@@ -580,7 +584,12 @@ export default function Results({ result, onResult }) {
                       {a.detail}
                     </td>
                     <td role="cell" data-label="When">
-                      <time dateTime={a.timestamp}>{new Date(a.timestamp).toLocaleString()}</time>
+                      {/* The backend stores naive UTC (datetime.utcnow) with no
+                          offset; without the "Z" browsers would read it as local
+                          time and show it hours off. */}
+                      <time dateTime={a.timestamp}>
+                        {new Date(/[Zz]|[+-]\d\d:?\d\d$/.test(a.timestamp) ? a.timestamp : a.timestamp + 'Z').toLocaleString()}
+                      </time>
                     </td>
                   </tr>
                 ))}

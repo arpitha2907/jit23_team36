@@ -10,6 +10,7 @@ from app.services import (
     field_extraction,
     fusion,
     languages,
+    llm_correction,
     ml_context,
     nlp_check,
     ocr_service,
@@ -102,6 +103,15 @@ def process_document(
     except Exception:
         contextual_candidates = {}
 
+    # Optional, off by default: one batched GPT call for the same flagged
+    # free-text tokens.  Returns {} when disabled or on any failure.
+    llm_candidates = llm_correction.suggest_batch(
+        words,
+        suggestion_indices,
+        doc_type=normalized_doc_type,
+        language_codes=normalized_languages,
+    )
+
     field_results = []
 
     for i, w in enumerate(words):
@@ -142,6 +152,7 @@ def process_document(
                 # not retry one model call per flagged token.
                 contextual_candidates=contextual_candidates.get(i, []),
                 language_codes=normalized_languages,
+                llm_candidates=llm_candidates.get(i),
             )
 
         field_results.append(
